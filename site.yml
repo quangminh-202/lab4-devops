@@ -1,0 +1,89 @@
+---
+- name: Deploy lab4-service
+  hosts: lab4
+  become: true
+
+  vars:
+    service_dir: /opt/lab4-service
+    html_dir: /opt/lab4-service/html
+    service_port: 8000
+
+  tasks:
+    - name: Установить необходимые пакеты
+      ansible.builtin.apt:
+        name:
+          - git
+          - curl
+          - python3
+          - python3-venv
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Создать каталог сервиса
+      ansible.builtin.file:
+        path: "{{ html_dir }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Развернуть index.html
+      ansible.builtin.copy:
+        dest: "{{ html_dir }}/index.html"
+        content: |
+          <!DOCTYPE html>
+          <html lang="ru">
+          <head>
+              <meta charset="UTF-8">
+              <title>Лабораторная работа №4</title>
+          </head>
+          <body>
+              <h1>Лабораторная работа №4 — DevOps</h1>
+              <p>Студент: <b>Чан Куанг Минь</b></p>
+          </body>
+          </html>
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Скопировать service.sh
+      ansible.builtin.copy:
+        src: service.sh
+        dest: "{{ service_dir }}/service.sh"
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Создать lab4-service.service
+      ansible.builtin.copy:
+        src: lab4-service.service
+        dest: /etc/systemd/system/lab4-service.service
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Включить и запустить lab4-service
+      ansible.builtin.systemd:
+        name: lab4-service
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Проверить HTTP 200 на порту 8000
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ service_port }}/"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: health_result
+
+    - name: Вывести результат проверки
+      ansible.builtin.debug:
+        msg: "Сервис отвечает HTTP {{ health_result.status }}"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
